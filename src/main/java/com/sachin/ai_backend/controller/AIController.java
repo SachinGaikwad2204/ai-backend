@@ -42,13 +42,6 @@ public class AIController {
         return chatSessionRepository.findAll();
     }
 
-    @PostMapping("/chat/stream")
-    public org.springframework.web.servlet.mvc.method.annotation.SseEmitter streamChat(
-        @RequestParam(required = false) Long sessionId,
-        @RequestBody String prompt
-    ) {
-    return aiService.streamResponse(prompt, sessionId);
-}
 
 @PostMapping("/sessions")
 public ChatSession createSession() {

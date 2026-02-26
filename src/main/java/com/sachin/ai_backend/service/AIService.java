@@ -36,7 +36,6 @@ public class AIService {
         if (sessionId == null) {
             session = new ChatSession();
             session.setTitle("New Chat");
-            session.setCreatedAt(LocalDateTime.now());
             session = chatSessionRepository.save(session);
         } else {
             session = chatSessionRepository.findById(sessionId)

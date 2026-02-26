@@ -68,17 +68,29 @@ public class AIService {
                 .POST(HttpRequest.BodyPublishers.ofString(requestBody))
                 .build();
 
-        HttpResponse<String> response =
-                httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
-        JsonNode jsonNode = mapper.readTree(response.body());
 
-        String aiResponse = jsonNode
-                .get("choices")
-                .get(0)
-                .get("message")
-                .get("content")
-                .asText();
+String aiResponse;
+
+try {
+    HttpResponse<String> response =
+            httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+    JsonNode jsonNode = mapper.readTree(response.body());
+
+    aiResponse = jsonNode
+            .get("choices")
+            .get(0)
+            .get("message")
+            .get("content")
+            .asText();
+
+} catch (Exception e) {
+    return "AI service temporarily unavailable.";
+}
+
+
+
 
         // Save AI response
         ChatMessage aiMessage = new ChatMessage("AI", aiResponse, session);

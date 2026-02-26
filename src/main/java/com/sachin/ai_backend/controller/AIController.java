@@ -81,7 +81,7 @@ public ResponseEntity<Void> renameSession(
 public SseEmitter streamResponse(@PathVariable Long sessionId,
                                  @RequestParam String prompt) {
 
-    SseEmitter emitter = new SseEmitter();
+    SseEmitter emitter = new SseEmitter(60000L); // 60s timeout
 
     new Thread(() -> {
         try {
@@ -93,13 +93,16 @@ public SseEmitter streamResponse(@PathVariable Long sessionId,
             }
 
             emitter.complete();
+
         } catch (Exception e) {
-            emitter.completeWithError(e);
+            try {
+                emitter.send("Error: AI service unavailable");
+            } catch (Exception ignored) {}
+            emitter.complete();
         }
     }).start();
 
     return emitter;
 }
-
 
 }

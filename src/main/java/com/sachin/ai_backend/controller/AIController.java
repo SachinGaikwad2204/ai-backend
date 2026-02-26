@@ -87,10 +87,11 @@ public SseEmitter streamResponse(@PathVariable Long sessionId,
         try {
             String response = aiService.getResponse(prompt, sessionId);
 
-            for (char c : response.toCharArray()) {
-                emitter.send(String.valueOf(c));
-                Thread.sleep(20);
-            }
+for (int i = 0; i < response.length(); i += 3) {
+    int end = Math.min(i + 3, response.length());
+    emitter.send(response.substring(i, end));
+    Thread.sleep(30);
+}
 
             emitter.complete();
 

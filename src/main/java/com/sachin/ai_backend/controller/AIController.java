@@ -1,11 +1,8 @@
 package com.sachin.ai_backend.controller;
 
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.CrossOrigin;
-import org.springframework.beans.factory.annotation.Autowired;
 import com.sachin.ai_backend.model.ChatMessage;
-import com.sachin.ai_backend.repository.ChatMessageRepository;
 import com.sachin.ai_backend.model.ChatSession;
+import com.sachin.ai_backend.repository.ChatMessageRepository;
 import com.sachin.ai_backend.repository.ChatSessionRepository;
 import com.sachin.ai_backend.service.AIService;
 import org.springframework.web.bind.annotation.*;
@@ -14,66 +11,63 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/ai")
+@CrossOrigin(origins = "*")
 public class AIController {
 
-    @Autowired
-    private ChatMessageRepository chatMessageRepository;
     private final AIService aiService;
     private final ChatSessionRepository chatSessionRepository;
+    private final ChatMessageRepository chatMessageRepository;
 
     public AIController(AIService aiService,
-                        ChatSessionRepository chatSessionRepository) {
+                        ChatSessionRepository chatSessionRepository,
+                        ChatMessageRepository chatMessageRepository) {
         this.aiService = aiService;
         this.chatSessionRepository = chatSessionRepository;
+        this.chatMessageRepository = chatMessageRepository;
     }
 
-    @PostMapping("/chat/{sessionId}")
-	public String chat(
-    @PathVariable Long sessionId,
-    @RequestBody String prompt
-       ) throws Exception {
-      return aiService.getResponse(prompt, sessionId);
-     }
+    // CREATE SESSION
+    @PostMapping("/sessions")
+    public ChatSession createSession() {
+        ChatSession session = new ChatSession();
+        session.setTitle("New Chat");
+        return chatSessionRepository.save(session);
+    }
 
-
+    // GET ALL SESSIONS
     @GetMapping("/sessions")
-    public List<ChatSession> getSessions() {
+    public List<ChatSession> getAllSessions() {
         return chatSessionRepository.findAll();
     }
 
+    // GET MESSAGES BY SESSION
+    @GetMapping("/sessions/{id}")
+    public List<ChatMessage> getMessagesBySession(@PathVariable Long id) {
+        return chatMessageRepository.findBySessionIdOrderByCreatedAtAsc(id);
+    }
 
-@PostMapping("/sessions")
-public ChatSession createSession() {
-    ChatSession session = new ChatSession();
-    session.setTitle("New Chat");
-    return chatSessionRepository.save(session);
-}
+    // SEND MESSAGE
+    @PostMapping("/chat/{sessionId}")
+    public String chat(@PathVariable Long sessionId,
+                       @RequestBody String prompt) throws Exception {
+        return aiService.getResponse(prompt, sessionId);
+    }
 
+    // DELETE SESSION
+    @DeleteMapping("/sessions/{id}")
+    public void deleteSession(@PathVariable Long id) {
+        chatSessionRepository.deleteById(id);
+    }
 
+    // UPDATE TITLE
+    @PutMapping("/sessions/{id}")
+    public ChatSession updateTitle(@PathVariable Long id,
+                                   @RequestBody ChatSession updatedSession) {
 
-@GetMapping("/sessions/{id}")
-public List<ChatMessage> getMessagesBySession(@PathVariable Long id) {
-    return chatMessageRepository.findBySessionIdOrderByCreatedAtAsc(id);
-}
+        ChatSession session = chatSessionRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Session not found"));
 
-@DeleteMapping("/sessions/{id}")
-public void deleteSession(@PathVariable Long id) {
-    chatSessionRepository.deleteById(id);
-}
-
-
-
-@PutMapping("/sessions/{id}")
-public ChatSession updateTitle(
-        @PathVariable Long id,
-        @RequestBody ChatSession updatedSession
-) {
-    ChatSession session = chatSessionRepository
-            .findById(id)
-            .orElseThrow(() -> new RuntimeException("Session not found"));
-
-    session.setTitle(updatedSession.getTitle());
-
-    return chatSessionRepository.save(session);
-}
+        session.setTitle(updatedSession.getTitle());
+        return chatSessionRepository.save(session);
+    }
 }

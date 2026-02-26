@@ -12,7 +12,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.time.LocalDateTime;
+import java.time.Duration;
 import java.util.*;
 
 @Service
@@ -26,77 +26,89 @@ public class AIService {
                      ChatMessageRepository chatMessageRepository) {
         this.chatSessionRepository = chatSessionRepository;
         this.chatMessageRepository = chatMessageRepository;
-        this.httpClient = HttpClient.newHttpClient();
+
+        // Production safe HttpClient
+        this.httpClient = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(10))
+                .build();
     }
 
-    public String getResponse(String prompt, Long sessionId) throws Exception {
+    public String getResponse(String prompt, Long sessionId) {
 
-        ChatSession session;
+        try {
+            ChatSession session;
 
-        if (sessionId == null) {
-            session = new ChatSession();
-            session.setTitle("New Chat");
-            session = chatSessionRepository.save(session);
-        } else {
-            session = chatSessionRepository.findById(sessionId)
-                    .orElseThrow(() -> new RuntimeException("Session not found"));
-        }
+            if (sessionId == null) {
+                session = new ChatSession();
+                session.setTitle("New Chat");
+                session = chatSessionRepository.save(session);
+            } else {
+                session = chatSessionRepository.findById(sessionId)
+                        .orElseThrow(() -> new RuntimeException("Session not found"));
+            }
 
-        // Save USER message
-        ChatMessage userMessage = new ChatMessage("USER", prompt, session);
-        chatMessageRepository.save(userMessage);
+            // Save USER message
+            ChatMessage userMessage = new ChatMessage("USER", prompt, session);
+            chatMessageRepository.save(userMessage);
 
-        // Build Groq request
-        ObjectMapper mapper = new ObjectMapper();
+            // Build Groq request
+            ObjectMapper mapper = new ObjectMapper();
 
-        Map<String, Object> requestMap = new HashMap<>();
-	requestMap.put("model", "llama-3.1-8b-instant");
+            Map<String, Object> requestMap = new HashMap<>();
+            requestMap.put("model", "llama-3.1-8b-instant");
 
-        List<Map<String, String>> messages = new ArrayList<>();
-        Map<String, String> userMsg = new HashMap<>();
-        userMsg.put("role", "user");
-        userMsg.put("content", prompt);
-        messages.add(userMsg);
+            List<Map<String, String>> messages = new ArrayList<>();
+            Map<String, String> userMsg = new HashMap<>();
+            userMsg.put("role", "user");
+            userMsg.put("content", prompt);
+            messages.add(userMsg);
 
-        requestMap.put("messages", messages);
+            requestMap.put("messages", messages);
 
-        String requestBody = mapper.writeValueAsString(requestMap);
+            String requestBody = mapper.writeValueAsString(requestMap);
 
-        String apiKey = System.getenv("GROQ_API_KEY");
+            String apiKey = System.getenv("GROQ_API_KEY");
 
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create("https://api.groq.com/openai/v1/chat/completions"))
-                .header("Content-Type", "application/json")
-                .header("Authorization", "Bearer " + apiKey)
-                .POST(HttpRequest.BodyPublishers.ofString(requestBody))
-                .build();
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create("https://api.groq.com/openai/v1/chat/completions"))
+                    .timeout(Duration.ofSeconds(30))
+                    .header("Content-Type", "application/json")
+                    .header("Authorization", "Bearer " + apiKey)
+                    .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+                    .build();
 
-        HttpResponse<String> response =
-                httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response =
+                    httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
-        System.out.println("Groq RAW RESPONSE: " + response.body());
+            if (response.statusCode() != 200) {
+                return "AI Error: " + response.body();
+            }
 
-        JsonNode jsonNode = mapper.readTree(response.body());
+            JsonNode jsonNode = mapper.readTree(response.body());
 
-        if (jsonNode.has("choices")
-                && jsonNode.get("choices").isArray()
-                && jsonNode.get("choices").size() > 0) {
+            if (jsonNode.has("choices")
+                    && jsonNode.get("choices").isArray()
+                    && jsonNode.get("choices").size() > 0) {
 
-            String aiResponse = jsonNode
-                    .get("choices")
-                    .get(0)
-                    .get("message")
-                    .get("content")
-                    .asText();
+                String aiResponse = jsonNode
+                        .get("choices")
+                        .get(0)
+                        .get("message")
+                        .get("content")
+                        .asText();
 
-            ChatMessage aiMessage = new ChatMessage("AI", aiResponse, session);
-            chatMessageRepository.save(aiMessage);
+                // Save AI message
+                ChatMessage aiMessage = new ChatMessage("AI", aiResponse, session);
+                chatMessageRepository.save(aiMessage);
 
-            return aiResponse;
+                return aiResponse;
+            } else {
+                return "AI Error: Unexpected response format.";
+            }
 
-        } else {
-
-            return "AI Error: " + response.body();
+        } catch (Exception e) {
+            e.printStackTrace();
+            return "AI service is temporarily unavailable. Please try again.";
         }
     }
 }

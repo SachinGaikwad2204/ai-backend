@@ -12,14 +12,17 @@ public class CorsConfig {
         return new WebMvcConfigurer() {
             @Override
             public void addCorsMappings(CorsRegistry registry) {
-                registry.addMapping("/**")
-                        .allowedOrigins(
-                                "https://ai-ui-app-chi.vercel.app",
-                                "http://localhost:3000"
-                        )
-                        .allowedMethods("*")
-                        .allowedHeaders("*")
-                        .allowCredentials(false);
+		registry.addMapping("/**")
+        .allowedOriginPatterns(
+                "https://*.vercel.app",
+                "http://localhost:3000"
+        )
+        .allowedMethods("*")
+        .allowedHeaders("*")
+        .allowCredentials(false);
+
+
+
             }
         };
     }

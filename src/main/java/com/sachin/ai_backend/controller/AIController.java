@@ -52,4 +52,11 @@ public class AIController {
                        @RequestBody String prompt) throws Exception {
         return aiService.getResponse(prompt, sessionId);
     }
+
+@DeleteMapping("/sessions/{id}")
+public ResponseEntity<Void> deleteSession(@PathVariable Long id) {
+    sessionService.deleteSession(id);
+    return ResponseEntity.ok().build();
+}
+
 }

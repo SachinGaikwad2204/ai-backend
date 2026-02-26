@@ -86,4 +86,8 @@ public class AIService {
 
         return aiResponse;
     }
+     public void deleteSession(Long id) {
+    chatSessionRepository.deleteById(id);
+}
+
 }

@@ -12,7 +12,6 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.time.Duration;
 import java.util.*;
 
 @Service
@@ -26,89 +25,65 @@ public class AIService {
                      ChatMessageRepository chatMessageRepository) {
         this.chatSessionRepository = chatSessionRepository;
         this.chatMessageRepository = chatMessageRepository;
-
-        // Production safe HttpClient
-        this.httpClient = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(10))
-                .build();
+        this.httpClient = HttpClient.newHttpClient();
     }
 
-    public String getResponse(String prompt, Long sessionId) {
+    public String getResponse(String prompt, Long sessionId) throws Exception {
 
-        try {
-            ChatSession session;
+        ChatSession session = chatSessionRepository.findById(sessionId)
+                .orElseThrow(() -> new RuntimeException("Session not found"));
 
-            if (sessionId == null) {
-                session = new ChatSession();
-                session.setTitle("New Chat");
-                session = chatSessionRepository.save(session);
-            } else {
-                session = chatSessionRepository.findById(sessionId)
-                        .orElseThrow(() -> new RuntimeException("Session not found"));
-            }
+        // Save user message
+        ChatMessage userMessage = new ChatMessage("USER", prompt, session);
+        chatMessageRepository.save(userMessage);
 
-            // Save USER message
-            ChatMessage userMessage = new ChatMessage("USER", prompt, session);
-            chatMessageRepository.save(userMessage);
+        // Fetch full history
+        List<ChatMessage> history =
+                chatMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId);
 
-            // Build Groq request
-            ObjectMapper mapper = new ObjectMapper();
+        ObjectMapper mapper = new ObjectMapper();
+        Map<String, Object> requestMap = new HashMap<>();
 
-            Map<String, Object> requestMap = new HashMap<>();
-            requestMap.put("model", "llama-3.1-8b-instant");
+        requestMap.put("model", "llama-3.1-8b-instant");
 
-            List<Map<String, String>> messages = new ArrayList<>();
-            Map<String, String> userMsg = new HashMap<>();
-            userMsg.put("role", "user");
-            userMsg.put("content", prompt);
-            messages.add(userMsg);
+        List<Map<String, String>> messages = new ArrayList<>();
 
-            requestMap.put("messages", messages);
-
-            String requestBody = mapper.writeValueAsString(requestMap);
-
-            String apiKey = System.getenv("GROQ_API_KEY");
-
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create("https://api.groq.com/openai/v1/chat/completions"))
-                    .timeout(Duration.ofSeconds(30))
-                    .header("Content-Type", "application/json")
-                    .header("Authorization", "Bearer " + apiKey)
-                    .POST(HttpRequest.BodyPublishers.ofString(requestBody))
-                    .build();
-
-            HttpResponse<String> response =
-                    httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-
-            if (response.statusCode() != 200) {
-                return "AI Error: " + response.body();
-            }
-
-            JsonNode jsonNode = mapper.readTree(response.body());
-
-            if (jsonNode.has("choices")
-                    && jsonNode.get("choices").isArray()
-                    && jsonNode.get("choices").size() > 0) {
-
-                String aiResponse = jsonNode
-                        .get("choices")
-                        .get(0)
-                        .get("message")
-                        .get("content")
-                        .asText();
-
-                // Save AI message
-                ChatMessage aiMessage = new ChatMessage("AI", aiResponse, session);
-                chatMessageRepository.save(aiMessage);
-
-                return aiResponse;
-            } else {
-                return "AI Error: Unexpected response format.";
-            }
-
-        } catch (Exception e) {
-            e.printStackTrace();
-            return "AI service is temporarily unavailable. Please try again.";
+        for (ChatMessage msg : history) {
+            Map<String, String> m = new HashMap<>();
+            m.put("role", msg.getRole().equals("USER") ? "user" : "assistant");
+            m.put("content", msg.getContent());
+            messages.add(m);
         }
+
+        requestMap.put("messages", messages);
+
+        String requestBody = mapper.writeValueAsString(requestMap);
+
+        String apiKey = System.getenv("GROQ_API_KEY");
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create("https://api.groq.com/openai/v1/chat/completions"))
+                .header("Content-Type", "application/json")
+                .header("Authorization", "Bearer " + apiKey)
+                .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+                .build();
+
+        HttpResponse<String> response =
+                httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+        JsonNode jsonNode = mapper.readTree(response.body());
+
+        String aiResponse = jsonNode
+                .get("choices")
+                .get(0)
+                .get("message")
+                .get("content")
+                .asText();
+
+        // Save AI response
+        ChatMessage aiMessage = new ChatMessage("AI", aiResponse, session);
+        chatMessageRepository.save(aiMessage);
+
+        return aiResponse;
     }
 }

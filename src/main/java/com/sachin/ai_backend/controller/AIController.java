@@ -52,22 +52,4 @@ public class AIController {
                        @RequestBody String prompt) throws Exception {
         return aiService.getResponse(prompt, sessionId);
     }
-
-    // DELETE SESSION
-    @DeleteMapping("/sessions/{id}")
-    public void deleteSession(@PathVariable Long id) {
-        chatSessionRepository.deleteById(id);
-    }
-
-    // UPDATE TITLE
-    @PutMapping("/sessions/{id}")
-    public ChatSession updateTitle(@PathVariable Long id,
-                                   @RequestBody ChatSession updatedSession) {
-
-        ChatSession session = chatSessionRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Session not found"));
-
-        session.setTitle(updatedSession.getTitle());
-        return chatSessionRepository.save(session);
-    }
 }

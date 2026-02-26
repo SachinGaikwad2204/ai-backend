@@ -1,5 +1,6 @@
 package com.sachin.ai_backend.controller;
 
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import com.sachin.ai_backend.model.ChatMessage;
@@ -66,6 +67,39 @@ public ResponseEntity<Void> deleteSession(@PathVariable Long id) {
     return ResponseEntity.ok().build();
 }
 
+
+@PutMapping("/sessions/{id}/rename")
+public ResponseEntity<Void> renameSession(
+        @PathVariable Long id,
+        @RequestBody String newTitle) {
+    aiService.renameSession(id, newTitle);
+    return ResponseEntity.ok().build();
+}
+
+
+@GetMapping(value = "/chat/stream/{sessionId}", produces = "text/event-stream")
+public SseEmitter streamResponse(@PathVariable Long sessionId,
+                                 @RequestParam String prompt) {
+
+    SseEmitter emitter = new SseEmitter();
+
+    new Thread(() -> {
+        try {
+            String response = aiService.getResponse(prompt, sessionId);
+
+            for (char c : response.toCharArray()) {
+                emitter.send(String.valueOf(c));
+                Thread.sleep(20);
+            }
+
+            emitter.complete();
+        } catch (Exception e) {
+            emitter.completeWithError(e);
+        }
+    }).start();
+
+    return emitter;
+}
 
 
 }

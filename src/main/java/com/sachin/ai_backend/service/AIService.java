@@ -90,4 +90,25 @@ public class AIService {
     chatSessionRepository.deleteById(id);
 }
 
+
+public void updateTitleIfFirstMessage(Long sessionId, String prompt) {
+    ChatSession session = chatSessionRepository.findById(sessionId)
+            .orElseThrow(() -> new RuntimeException("Session not found"));
+
+    if (session.getTitle() == null || session.getTitle().equals("New Chat")) {
+        String title = prompt.length() > 30 ? prompt.substring(0, 30) + "..." : prompt;
+        session.setTitle(title);
+        chatSessionRepository.save(session);
+    }
+}
+
+
+public void renameSession(Long id, String newTitle) {
+    ChatSession session = chatSessionRepository.findById(id)
+            .orElseThrow(() -> new RuntimeException("Session not found"));
+    session.setTitle(newTitle);
+    chatSessionRepository.save(session);
+}
+
+
 }

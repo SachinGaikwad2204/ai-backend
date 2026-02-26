@@ -12,9 +12,8 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.time.LocalDateTime;
+import java.util.*;
 
 @Service
 public class AIService {
@@ -37,32 +36,29 @@ public class AIService {
         if (sessionId == null) {
             session = new ChatSession();
             session.setTitle("New Chat");
+            session.setCreatedAt(LocalDateTime.now());
             session = chatSessionRepository.save(session);
         } else {
             session = chatSessionRepository.findById(sessionId)
                     .orElseThrow(() -> new RuntimeException("Session not found"));
         }
 
-        // Save user message
+        // Save USER message
         ChatMessage userMessage = new ChatMessage("USER", prompt, session);
         chatMessageRepository.save(userMessage);
 
-        // Get conversation history
-        List<ChatMessage> history =
-                chatMessageRepository.findBySessionIdOrderByCreatedAtAsc(session.getId());
-
+        // Build Groq request
         ObjectMapper mapper = new ObjectMapper();
 
-        // Build Groq messages array
-        List<Map<String, String>> messages = history.stream().map(msg -> {
-            Map<String, String> m = new HashMap<>();
-            m.put("role", msg.getRole().equals("USER") ? "user" : "assistant");
-            m.put("content", msg.getContent());
-            return m;
-        }).toList();
-
         Map<String, Object> requestMap = new HashMap<>();
-        requestMap.put("model", "llama3-70b-8192");
+        requestMap.put("model", "llama3-8b-8192");
+
+        List<Map<String, String>> messages = new ArrayList<>();
+        Map<String, String> userMsg = new HashMap<>();
+        userMsg.put("role", "user");
+        userMsg.put("content", prompt);
+        messages.add(userMsg);
+
         requestMap.put("messages", messages);
 
         String requestBody = mapper.writeValueAsString(requestMap);
@@ -79,14 +75,29 @@ public class AIService {
         HttpResponse<String> response =
                 httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
+        System.out.println("Groq RAW RESPONSE: " + response.body());
+
         JsonNode jsonNode = mapper.readTree(response.body());
-        String aiResponse =
-                jsonNode.get("choices").get(0).get("message").get("content").asText();
 
-        // Save AI message
-        ChatMessage aiMessage = new ChatMessage("AI", aiResponse, session);
-        chatMessageRepository.save(aiMessage);
+        if (jsonNode.has("choices")
+                && jsonNode.get("choices").isArray()
+                && jsonNode.get("choices").size() > 0) {
 
-        return aiResponse;
+            String aiResponse = jsonNode
+                    .get("choices")
+                    .get(0)
+                    .get("message")
+                    .get("content")
+                    .asText();
+
+            ChatMessage aiMessage = new ChatMessage("AI", aiResponse, session);
+            chatMessageRepository.save(aiMessage);
+
+            return aiResponse;
+
+        } else {
+
+            return "AI Error: " + response.body();
+        }
     }
 }

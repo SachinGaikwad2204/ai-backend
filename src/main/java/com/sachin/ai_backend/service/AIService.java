@@ -50,7 +50,7 @@ public class AIService {
         ObjectMapper mapper = new ObjectMapper();
 
         Map<String, Object> requestMap = new HashMap<>();
-        requestMap.put("model", "llama3-8b-8192");
+	requestMap.put("model", "llama-3.1-8b-instant");
 
         List<Map<String, String>> messages = new ArrayList<>();
         Map<String, String> userMsg = new HashMap<>();

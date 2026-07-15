@@ -1,5 +1,6 @@
 package com.sachin.ai_backend.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -15,7 +16,8 @@ public class ChatSession {
 
     private LocalDateTime createdAt = LocalDateTime.now();
 
-    @OneToMany(mappedBy = "session", cascade = CascadeType.ALL)
+    @OneToMany(mappedBy = "session", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @JsonIgnore  // ← ADD THIS TO BREAK CIRCULAR REFERENCE
     private List<ChatMessage> messages;
 
     public ChatSession() {}
@@ -25,9 +27,11 @@ public class ChatSession {
         this.createdAt = LocalDateTime.now();
     }
 
+    // Getters and setters
     public Long getId() { return id; }
     public String getTitle() { return title; }
     public LocalDateTime getCreatedAt() { return createdAt; }
+    public List<ChatMessage> getMessages() { return messages; }
 
     public void setTitle(String title) {
         this.title = title;

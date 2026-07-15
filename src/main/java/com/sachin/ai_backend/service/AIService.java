@@ -1,126 +1,82 @@
 package com.sachin.ai_backend.service;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sachin.ai_backend.model.ChatMessage;
 import com.sachin.ai_backend.model.ChatSession;
 import com.sachin.ai_backend.repository.ChatMessageRepository;
 import com.sachin.ai_backend.repository.ChatSessionRepository;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.openai.OpenAiChatModel;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
-
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.util.*;
+import org.springframework.transaction.annotation.Transactional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Service
 public class AIService {
 
-    private final ChatSessionRepository chatSessionRepository;
-    private final ChatMessageRepository chatMessageRepository;
-    private final HttpClient httpClient;
+    private static final Logger log = LoggerFactory.getLogger(AIService.class);
 
-    public AIService(ChatSessionRepository chatSessionRepository,
-                     ChatMessageRepository chatMessageRepository) {
-        this.chatSessionRepository = chatSessionRepository;
-        this.chatMessageRepository = chatMessageRepository;
-        this.httpClient = HttpClient.newHttpClient();
+    private final ChatClient chatClient;
+    private final ChatSessionRepository sessionRepository;
+    private final ChatMessageRepository messageRepository;
+    private final SentimentService sentimentService;
+
+    public AIService(
+            @Qualifier("openAiChatModel") OpenAiChatModel openAiChatModel,
+            ChatSessionRepository sessionRepository,
+            ChatMessageRepository messageRepository,
+            SentimentService sentimentService) {
+        
+        this.chatClient = ChatClient.create(openAiChatModel);
+        this.sessionRepository = sessionRepository;
+        this.messageRepository = messageRepository;
+        this.sentimentService = sentimentService;
+        log.info("✅ AI Service initialized with Groq");
     }
 
     public String getResponse(String prompt, Long sessionId) throws Exception {
-
-        ChatSession session = chatSessionRepository.findById(sessionId)
-                .orElseThrow(() -> new RuntimeException("Session not found"));
-
-        // Save user message
-        ChatMessage userMessage = new ChatMessage("USER", prompt, session);
-        chatMessageRepository.save(userMessage);
-
-        // Fetch full history
-        List<ChatMessage> history =
-                chatMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId);
-
-        ObjectMapper mapper = new ObjectMapper();
-        Map<String, Object> requestMap = new HashMap<>();
-
-        requestMap.put("model", "llama-3.1-8b-instant");
-
-        List<Map<String, String>> messages = new ArrayList<>();
-
-        for (ChatMessage msg : history) {
-            Map<String, String> m = new HashMap<>();
-            m.put("role", msg.getRole().equals("USER") ? "user" : "assistant");
-            m.put("content", msg.getContent());
-            messages.add(m);
+        log.info("🤖 Generating response using Groq");
+        
+        try {
+            String sentiment = sentimentService.analyzeSentiment(prompt);
+            log.info("📊 User sentiment: {}", sentiment);
+            
+            String response = chatClient.prompt()
+                    .user(prompt)
+                    .call()
+                    .content();
+            
+            saveMessage(sessionId, "user", prompt);
+            saveMessage(sessionId, "assistant", response);
+            
+            return response;
+            
+        } catch (Exception e) {
+            log.error("❌ Groq failed: {}", e.getMessage());
+            return "I'm sorry, the AI service is currently unavailable. Please try again later.";
         }
-
-        requestMap.put("messages", messages);
-
-        String requestBody = mapper.writeValueAsString(requestMap);
-
-        String apiKey = System.getenv("GROQ_API_KEY");
-
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create("https://api.groq.com/openai/v1/chat/completions"))
-                .header("Content-Type", "application/json")
-                .header("Authorization", "Bearer " + apiKey)
-                .POST(HttpRequest.BodyPublishers.ofString(requestBody))
-                .build();
-
-
-
-String aiResponse;
-
-try {
-    HttpResponse<String> response =
-            httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-
-    JsonNode jsonNode = mapper.readTree(response.body());
-
-    aiResponse = jsonNode
-            .get("choices")
-            .get(0)
-            .get("message")
-            .get("content")
-            .asText();
-
-} catch (Exception e) {
-    return "AI service temporarily unavailable.";
-}
-
-
-
-
-        // Save AI response
-        ChatMessage aiMessage = new ChatMessage("AI", aiResponse, session);
-        chatMessageRepository.save(aiMessage);
-
-        return aiResponse;
     }
-     public void deleteSession(Long id) {
-    chatSessionRepository.deleteById(id);
-}
 
-
-public void updateTitleIfFirstMessage(Long sessionId, String prompt) {
-    ChatSession session = chatSessionRepository.findById(sessionId)
-            .orElseThrow(() -> new RuntimeException("Session not found"));
-
-    if (session.getTitle() == null || session.getTitle().equals("New Chat")) {
-        String title = prompt.length() > 30 ? prompt.substring(0, 30) + "..." : prompt;
-        session.setTitle(title);
-        chatSessionRepository.save(session);
+    @Transactional
+    public void saveMessage(Long sessionId, String role, String content) {
+        ChatSession session = sessionRepository.findById(sessionId)
+                .orElseThrow(() -> new RuntimeException("Session not found"));
+        
+        ChatMessage message = new ChatMessage(role, content, session);
+        messageRepository.save(message);
     }
-}
 
+    @Transactional
+    public void deleteSession(Long sessionId) {
+        sessionRepository.deleteById(sessionId);
+    }
 
-public void renameSession(Long id, String newTitle) {
-    ChatSession session = chatSessionRepository.findById(id)
-            .orElseThrow(() -> new RuntimeException("Session not found"));
-    session.setTitle(newTitle);
-    chatSessionRepository.save(session);
-}
-
-
+    @Transactional
+    public void renameSession(Long sessionId, String newTitle) {
+        ChatSession session = sessionRepository.findById(sessionId)
+                .orElseThrow(() -> new RuntimeException("Session not found"));
+        session.setTitle(newTitle);
+        sessionRepository.save(session);
+    }
 }
